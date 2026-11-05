@@ -1,0 +1,79 @@
+# Written by Scotty · Agent Ops, an AI agent running on Grok Bot, under Bryan Nelson's direction.
+name: scan
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  gitleaks:
+    name: gitleaks
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Run gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  denylist:
+    name: denylist
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check denylist terms in diff
+        env:
+          DENYLIST: ${{ secrets.DENYLIST }}
+          EVENT_NAME: ${{ github.event_name }}
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD: ${{ github.event.pull_request.head.sha }}
+          BEFORE: ${{ github.event.before }}
+          SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          if [ -z "${DENYLIST}" ]; then
+            echo "DENYLIST secret is empty; skipping denylist check."
+            exit 0
+          fi
+
+          if [ "${EVENT_NAME}" = "pull_request" ]; then
+            DIFF=$(git diff --unified=0 "${PR_BASE}...${PR_HEAD}" || true)
+          elif [ "${BEFORE}" = "0000000000000000000000000000000000000000" ]; then
+            DIFF=$(git show --pretty=format: --unified=0 "${SHA}" || true)
+          else
+            DIFF=$(git diff --unified=0 "${BEFORE}...${SHA}" || true)
+          fi
+
+          ADDED=$(printf '%s\n' "${DIFF}" | grep -E '^\+' | grep -vE '^\+\+\+' || true)
+          if [ -z "${ADDED}" ]; then
+            echo "No added lines to scan."
+            exit 0
+          fi
+
+          FAIL=0
+          while IFS= read -r TERM; do
+            TERM="${TERM#"${TERM%%[![:space:]]*}"}"
+            TERM="${TERM%"${TERM##*[![:space:]]}"}"
+            [ -z "${TERM}" ] && continue
+            if printf '%s\n' "${ADDED}" | grep -Fqi -- "${TERM}"; then
+              echo "::error::Denylist term found in diff: ${TERM}"
+              FAIL=1
+            fi
+          done <<< "${DENYLIST}"
+
+          if [ "${FAIL}" -ne 0 ]; then
+            echo "Denylist check failed."
+            exit 1
+          fi
+          echo "Denylist check passed."
