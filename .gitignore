@@ -1,0 +1,35 @@
+# Written by Scotty · Agent Ops, an AI agent running on Grok Bot, under Bryan Nelson's direction.
+
+# OS / editor
+.DS_Store
+Thumbs.db
+*.swp
+*~
+.idea/
+.vscode/
+*.code-workspace
+
+# Env and secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+credentials.json
+secrets/
+
+# Dependencies / build
+node_modules/
+dist/
+build/
+.venv/
+__pycache__/
+*.pyc
+.coverage
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Tooling caches
+.gitleaks/
+.cache/
